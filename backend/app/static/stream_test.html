@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket视频流测试</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container { max-width: 500px; margin: 0 auto; }
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        .card-header { text-align: center; margin-bottom: 24px; }
+        .card-header h1 { font-size: 24px; color: #333; margin-bottom: 8px; }
+        .card-header p { color: #888; font-size: 14px; }
+        
+        .status-indicator {
+            display: flex; align-items: center; gap: 8px;
+            padding: 12px; border-radius: 10px;
+            font-size: 14px; margin-bottom: 20px;
+        }
+        .status-indicator.connected { background: #d4edda; color: #155724; }
+        .status-indicator.disconnected { background: #f8d7da; color: #721c24; }
+        .status-indicator.connecting { background: #fff3cd; color: #856404; }
+        .status-dot { width: 10px; height: 10px; border-radius: 50%; animation: pulse 1.5s infinite; }
+        .status-indicator.connected .status-dot { background: #28a745; }
+        .status-indicator.disconnected .status-dot { background: #dc3545; animation: none; }
+        .status-indicator.connecting .status-dot { background: #ffc107; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        
+        .mode-selector { display: flex; gap: 12px; margin-bottom: 20px; }
+        .mode-btn {
+            flex: 1; padding: 12px; border: 2px solid #ddd; border-radius: 10px;
+            background: white; cursor: pointer; font-size: 14px; font-weight: 500;
+        }
+        .mode-btn.active { border-color: #667eea; background: #f0f0ff; color: #667eea; }
+        
+        .video-container {
+            position: relative; width: 100%; aspect-ratio: 4/3;
+            background: #000; border-radius: 12px; overflow: hidden;
+            margin-bottom: 16px;
+        }
+        #video { width: 100%; height: 100%; object-fit: cover; }
+        #canvas { display: none; }
+        
+        .control-buttons { display: flex; gap: 12px; }
+        .control-btn {
+            flex: 1; padding: 16px; border: none; border-radius: 12px;
+            font-size: 16px; font-weight: 600; cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .control-btn.start { background: linear-gradient(135deg, #28a745, #20c997); color: white; }
+        .control-btn.stop { background: linear-gradient(135deg, #dc3545, #c82333); color: white; }
+        .control-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        .result-section { margin-top: 20px; }
+        .result-card {
+            background: #f8f9fa; border-radius: 10px; padding: 16px;
+            margin-bottom: 12px; border-left: 4px solid;
+        }
+        .result-card.fatigue { border-left-color: #667eea; }
+        .result-card.gaze { border-left-color: #f093fb; }
+        .result-card.posture { border-left-color: #4facfe; }
+        .result-card.attention { border-left-color: #28a745; }
+        .result-title { font-weight: 600; color: #333; margin-bottom: 8px; }
+        .result-value { font-size: 24px; font-weight: 700; color: #667eea; }
+        .result-status {
+            display: inline-block; padding: 4px 12px; border-radius: 20px;
+            font-size: 12px; margin-top: 8px;
+        }
+        .result-status.high { background: #d4edda; color: #155724; }
+        .result-status.medium { background: #fff3cd; color: #856404; }
+        .result-status.low { background: #ffeeba; color: #856404; }
+        .result-status.critical { background: #f8d7da; color: #721c24; }
+        
+        .alert-section {
+            background: #fff3cd; border-radius: 10px; padding: 16px;
+            margin-top: 16px; border-left: 4px solid #f39c12;
+            display: none;
+        }
+        .alert-section.show { display: block; }
+        .alert-title { font-weight: 600; color: #856404; margin-bottom: 4px; }
+        .alert-message { font-size: 14px; color: #856404; }
+        
+        .logs-section {
+            background: #1a1a2e; border-radius: 10px; padding: 16px;
+            margin-top: 20px; max-height: 150px; overflow-y: auto;
+        }
+        .logs-section h3 { color: #fff; font-size: 14px; margin-bottom: 12px; }
+        .log-item { color: #aaa; font-size: 11px; margin-bottom: 3px; font-family: monospace; }
+        .log-item.success { color: #66ff66; }
+        .log-item.error { color: #ff6666; }
+        .log-item.info { color: #66b3ff; }
+        .log-item.warning { color: #ffcc66; }
+        
+        .stats-bar {
+            display: flex; justify-content: space-between;
+            padding: 8px 12px; background: #f8f9fa;
+            border-radius: 8px; margin-bottom: 12px;
+            font-size: 12px; color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="card-header">
+                <h1>🎥 视频流测试</h1>
+                <p>实时视频流分析 - WebSocket</p>
+            </div>
+
+            <div class="status-indicator disconnected" id="statusIndicator">
+                <span class="status-dot"></span>
+                <span id="statusText">未连接</span>
+            </div>
+
+            <div class="mode-selector">
+                <button class="mode-btn active" id="modeDriving">🚗 驾驶</button>
+                <button class="mode-btn" id="modeLearning">📚 学习</button>
+            </div>
+
+            <div class="stats-bar">
+                <span>帧率: <span id="fps">0</span> fps</span>
+                <span>延迟: <span id="latency">0</span> ms</span>
+                <span>已处理: <span id="processed">0</span> 帧</span>
+            </div>
+
+            <div class="video-container">
+                <video id="video" autoplay playsinline></video>
+                <canvas id="canvas"></canvas>
+            </div>
+
+            <div class="control-buttons">
+                <button class="control-btn start" id="startBtn">▶️ 开始监控</button>
+                <button class="control-btn stop" id="stopBtn" disabled>⏹️ 停止监控</button>
+            </div>
+
+            <div class="result-section" id="resultSection">
+                <div class="result-card fatigue">
+                    <div class="result-title">😴 疲劳检测</div>
+                    <div class="result-value" id="fatigueValue">0%</div>
+                    <div class="result-status high" id="fatigueStatus">正常</div>
+                </div>
+                <div class="result-card gaze">
+                    <div class="result-title">👀 视线估计</div>
+                    <div class="result-value" id="gazeValue">0%</div>
+                    <div class="result-status high" id="gazeStatus">居中</div>
+                </div>
+                <div class="result-card posture">
+                    <div class="result-title">🧍 坐姿检测</div>
+                    <div class="result-value" id="postureValue">0%</div>
+                    <div class="result-status high" id="postureStatus">良好</div>
+                </div>
+                <div class="result-card attention">
+                    <div class="result-title">🎯 综合注意力</div>
+                    <div class="result-value" id="attentionValue">0%</div>
+                    <div class="result-status high" id="attentionStatus">高</div>
+                </div>
+            </div>
+
+            <div class="alert-section" id="alertSection">
+                <div class="alert-title">⚠️ 告警</div>
+                <div class="alert-message" id="alertMessage"></div>
+            </div>
+
+            <div class="logs-section">
+                <h3>📜 日志</h3>
+                <div id="logs"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.1/socket.io.min.js"></script>
+    <script>
+        let socket;
+        let currentMode = 'driving';
+        let isStreaming = false;
+        let videoStream = null;
+        let frameCount = 0;
+        let startTime = null;
+        let fps = 0;
+        let lastProcessTime = 0;
+
+        const statusIndicator = document.getElementById('statusIndicator');
+        const statusText = document.getElementById('statusText');
+        const modeDriving = document.getElementById('modeDriving');
+        const modeLearning = document.getElementById('modeLearning');
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const logs = document.getElementById('logs');
+        
+        const fpsDisplay = document.getElementById('fps');
+        const latencyDisplay = document.getElementById('latency');
+        const processedDisplay = document.getElementById('processed');
+        
+        const fatigueValue = document.getElementById('fatigueValue');
+        const fatigueStatus = document.getElementById('fatigueStatus');
+        const gazeValue = document.getElementById('gazeValue');
+        const gazeStatus = document.getElementById('gazeStatus');
+        const postureValue = document.getElementById('postureValue');
+        const postureStatus = document.getElementById('postureStatus');
+        const attentionValue = document.getElementById('attentionValue');
+        const attentionStatus = document.getElementById('attentionStatus');
+        
+        const alertSection = document.getElementById('alertSection');
+        const alertMessage = document.getElementById('alertMessage');
+
+        function addLog(message, type = 'info') {
+            const logItem = document.createElement('div');
+            logItem.className = `log-item ${type}`;
+            const timestamp = new Date().toLocaleTimeString();
+            logItem.textContent = `[${timestamp}] ${message}`;
+            logs.appendChild(logItem);
+            logs.scrollTop = logs.scrollHeight;
+        }
+
+        function setStatus(status) {
+            statusIndicator.className = `status-indicator ${status}`;
+            statusText.textContent = status === 'connected' ? '已连接' : status === 'connecting' ? '连接中...' : '未连接';
+        }
+
+        function connectWebSocket() {
+            setStatus('connecting');
+            addLog('正在连接WebSocket...', 'info');
+
+            socket = io({
+                transports: ['websocket'],
+                reconnection: true,
+                reconnectionDelay: 1000,
+                reconnectionDelayMax: 5000,
+                pingInterval: 10000,
+                pingTimeout: 5000
+            });
+
+            socket.on('connect', () => {
+                setStatus('connected');
+                addLog('WebSocket连接成功', 'success');
+                socket.emit('join_test');
+            });
+
+            socket.on('connect_error', (error) => {
+                setStatus('disconnected');
+                addLog(`连接失败: ${error}`, 'error');
+            });
+
+            socket.on('disconnect', (reason) => {
+                setStatus('disconnected');
+                if (reason === 'io server disconnect') {
+                    addLog('服务器主动断开连接', 'error');
+                } else {
+                    addLog('连接断开，尝试重新连接...', 'warning');
+                }
+                stopStreaming();
+            });
+
+            socket.on('joined_test', (data) => {
+                addLog(`已加入测试房间: ${data.room}`, 'success');
+            });
+
+            socket.on('connected', (data) => {
+                addLog(`客户端ID: ${data.sid}`, 'info');
+            });
+
+            socket.on('frame_received', () => {
+                const latency = Date.now() - lastProcessTime;
+                latencyDisplay.textContent = latency;
+            });
+
+            socket.on('frame_result', (result) => {
+                updateResults(result);
+                frameCount++;
+                
+                if (startTime) {
+                    const elapsed = (Date.now() - startTime) / 1000;
+                    fps = (frameCount / elapsed).toFixed(1);
+                    fpsDisplay.textContent = fps;
+                }
+                processedDisplay.textContent = frameCount;
+            });
+
+            socket.on('frame_error', (error) => {
+                addLog(`处理错误: ${error.error}`, 'error');
+            });
+
+            socket.on('stream_started', (data) => {
+                addLog(`视频流已开始: ${data.mode}模式`, 'success');
+            });
+
+            socket.on('stream_stopped', (data) => {
+                addLog('视频流已停止', 'info');
+            });
+
+            socket.on('alert', (alertData) => {
+                addLog(`告警: ${alertData.message}`, 'warning');
+                showAlert(alertData);
+            });
+        }
+
+        function updateResults(result) {
+            if (result.fatigue) {
+                fatigueValue.textContent = `${(result.fatigue.fatigue_level * 100).toFixed(0)}%`;
+                fatigueStatus.textContent = result.fatigue.status === 'fatigued' ? '疲劳' : '正常';
+                fatigueStatus.className = `result-status ${result.fatigue.status === 'fatigued' ? 'critical' : 'high'}`;
+            }
+
+            if (result.gaze) {
+                gazeValue.textContent = `${(result.gaze.gaze_score * 100).toFixed(0)}%`;
+                gazeStatus.textContent = `方向: ${result.gaze.gaze_direction}`;
+                gazeStatus.className = `result-status ${result.gaze.gaze_direction === 'center' ? 'high' : 'medium'}`;
+            }
+
+            if (result.posture) {
+                postureValue.textContent = `${result.posture.posture_score?.toFixed(0)}%`;
+                const statusMap = { 'good': '良好', 'moderate': '一般', 'poor': '不良' };
+                postureStatus.textContent = statusMap[result.posture.status] || result.posture.status;
+                const classMap = { 'good': 'high', 'moderate': 'medium', 'poor': 'low' };
+                postureStatus.className = `result-status ${classMap[result.posture.status] || 'medium'}`;
+            }
+
+            if (result.attention) {
+                attentionValue.textContent = `${result.attention.attention_score?.toFixed(0)}%`;
+                const statusMap = { 'high': '高', 'medium': '中', 'low': '低', 'critical': '危险' };
+                attentionStatus.textContent = statusMap[result.attention.status] || result.attention.status;
+                attentionStatus.className = `result-status ${result.attention.status}`;
+            }
+        }
+
+        function showAlert(alertData) {
+            alertMessage.textContent = alertData.message;
+            alertSection.className = 'alert-section show';
+            setTimeout(() => {
+                alertSection.className = 'alert-section';
+            }, 5000);
+        }
+
+        async function startStreaming() {
+            try {
+                videoStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: 'user',
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        frameRate: { ideal: 15 }
+                    } 
+                });
+                
+                video.srcObject = videoStream;
+                isStreaming = true;
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                
+                frameCount = 0;
+                startTime = Date.now();
+                
+                socket.emit('start_stream', { mode: currentMode });
+                addLog('开始视频流监控', 'success');
+                
+                processFrames();
+            } catch (error) {
+                addLog(`相机访问失败: ${error}`, 'error');
+            }
+        }
+
+        function stopStreaming() {
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+                videoStream = null;
+            }
+            
+            isStreaming = false;
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            
+            socket.emit('stop_stream');
+            addLog('停止视频流监控', 'info');
+        }
+
+        async function processFrames() {
+            if (!isStreaming || !socket) return;
+
+            try {
+                if (video.videoWidth === 0 || video.videoHeight === 0) {
+                    setTimeout(processFrames, 100);
+                    return;
+                }
+                
+                const ctx = canvas.getContext('2d');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                ctx.drawImage(video, 0, 0);
+                
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
+                if (!dataUrl || dataUrl.length < 100) {
+                    addLog('视频帧捕获失败', 'warning');
+                    setTimeout(processFrames, 100);
+                    return;
+                }
+                
+                const imageData = dataUrl.split(',')[1];
+                
+                if (!imageData || imageData.length < 100) {
+                    addLog('图片数据为空', 'warning');
+                    setTimeout(processFrames, 100);
+                    return;
+                }
+                
+                lastProcessTime = Date.now();
+                socket.emit('frame_test', {
+                    frame: imageData,
+                    mode: currentMode
+                });
+            } catch (error) {
+                addLog(`帧处理错误: ${error}`, 'error');
+            }
+            
+            setTimeout(processFrames, 500);
+        }
+
+        modeDriving.addEventListener('click', () => {
+            currentMode = 'driving';
+            modeDriving.className = 'mode-btn active';
+            modeLearning.className = 'mode-btn';
+            addLog('切换到驾驶模式', 'info');
+        });
+
+        modeLearning.addEventListener('click', () => {
+            currentMode = 'learning';
+            modeLearning.className = 'mode-btn active';
+            modeDriving.className = 'mode-btn';
+            addLog('切换到学习模式', 'info');
+        });
+
+        startBtn.addEventListener('click', startStreaming);
+        stopBtn.addEventListener('click', stopStreaming);
+
+        document.addEventListener('DOMContentLoaded', connectWebSocket);
+    </script>
+</body>
+</html>

@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTTP测试 - 智能监测系统</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container { max-width: 500px; margin: 0 auto; }
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        .card-header { text-align: center; margin-bottom: 24px; }
+        .card-header h1 { font-size: 24px; color: #333; margin-bottom: 8px; }
+        .card-header p { color: #888; font-size: 14px; }
+        
+        .upload-btn {
+            display: block;
+            width: 100%;
+            padding: 20px;
+            border: 2px dashed #ddd;
+            border-radius: 12px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #f8f9fa;
+        }
+        .upload-btn:hover { border-color: #667eea; background: #f0f0ff; }
+        #fileInput { display: none; }
+        
+        .camera-btn {
+            display: block;
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 12px;
+        }
+        
+        #previewImage {
+            width: 100%;
+            max-height: 300px;
+            object-fit: contain;
+            border-radius: 12px;
+            display: none;
+            margin-top: 12px;
+        }
+        
+        .send-btn {
+            display: block;
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 12px;
+            display: none;
+        }
+        
+        .send-btn:hover { transform: translateY(-2px); }
+        .send-btn:disabled { background: #ccc; cursor: not-allowed; }
+        
+        .mode-selector {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .mode-btn {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            background: white;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .mode-btn.active {
+            border-color: #667eea;
+            background: #f0f0ff;
+            color: #667eea;
+        }
+        
+        .result-section { display: none; margin-top: 20px; }
+        .result-card {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 16px;
+            margin-bottom: 12px;
+            border-left: 4px solid #667eea;
+        }
+        .result-title { font-weight: 600; color: #333; margin-bottom: 8px; }
+        .result-value { font-size: 24px; font-weight: 700; color: #667eea; }
+        .result-status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            margin-top: 8px;
+        }
+        .result-status.high { background: #d4edda; color: #155724; }
+        .result-status.medium { background: #fff3cd; color: #856404; }
+        .result-status.low { background: #ffeeba; color: #856404; }
+        .result-status.critical { background: #f8d7da; color: #721c24; }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+            display: none;
+        }
+        .loading .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 12px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .logs-section {
+            background: #1a1a2e;
+            border-radius: 10px;
+            padding: 16px;
+            margin-top: 20px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .logs-section h3 { color: #fff; font-size: 14px; margin-bottom: 12px; }
+        .log-item { color: #aaa; font-size: 12px; margin-bottom: 4px; font-family: monospace; }
+        .log-item.success { color: #66ff66; }
+        .log-item.error { color: #ff6666; }
+        .log-item.info { color: #66b3ff; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="card-header">
+                <h1>📸 HTTP测试</h1>
+                <p>使用HTTP POST上传图片进行分析</p>
+            </div>
+
+            <div class="mode-selector">
+                <button class="mode-btn active" id="modeDriving">🚗 驾驶模式</button>
+                <button class="mode-btn" id="modeLearning">📚 学习模式</button>
+            </div>
+
+            <label for="fileInput" class="upload-btn">
+                <i>📁</i>
+                <span>点击选择图片或拍照上传</span>
+            </label>
+            <input type="file" id="fileInput" accept="image/*">
+            <button class="camera-btn" id="cameraBtn">📷 使用相机</button>
+
+            <img id="previewImage" alt="预览图片">
+            <button class="send-btn" id="sendBtn">发送图片进行分析</button>
+
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <span>正在分析中...</span>
+            </div>
+
+            <div class="result-section" id="resultSection">
+                <h3>分析结果</h3>
+                <div id="resultContent"></div>
+            </div>
+
+            <div class="logs-section">
+                <h3>📜 日志</h3>
+                <div id="logs"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentMode = 'driving';
+        let currentImage = null;
+
+        function addLog(message, type = 'info') {
+            const logItem = document.createElement('div');
+            logItem.className = `log-item ${type}`;
+            const timestamp = new Date().toLocaleTimeString();
+            logItem.textContent = `[${timestamp}] ${message}`;
+            logs.appendChild(logItem);
+            logs.scrollTop = logs.scrollHeight;
+        }
+
+        function imageToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target.result.split(',')[1]);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        async function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            currentImage = await imageToBase64(file);
+            previewImage.src = `data:image/jpeg;base64,${currentImage}`;
+            previewImage.style.display = 'block';
+            sendBtn.style.display = 'block';
+            addLog(`图片已加载: ${file.name}`, 'info');
+        }
+
+        async function captureFromCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+                const video = document.createElement('video');
+                video.srcObject = stream;
+                video.autoplay = true;
+                
+                setTimeout(() => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    canvas.getContext('2d').drawImage(video, 0, 0);
+                    currentImage = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+                    previewImage.src = canvas.toDataURL('image/jpeg');
+                    previewImage.style.display = 'block';
+                    sendBtn.style.display = 'block';
+                    stream.getTracks().forEach(track => track.stop());
+                    addLog('已从相机捕获图片', 'success');
+                }, 1000);
+            } catch (error) {
+                addLog(`相机访问失败: ${error}`, 'error');
+            }
+        }
+
+        async function sendImage() {
+            if (!currentImage) return;
+            
+            sendBtn.disabled = true;
+            sendBtn.style.display = 'none';
+            loading.style.display = 'block';
+            resultSection.style.display = 'none';
+            
+            addLog('正在上传图片...', 'info');
+            
+            try {
+                const response = await fetch('/api/cv/test/attention', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        frame: currentImage,
+                        mode: currentMode
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP错误: ${response.status}`);
+                }
+                
+                const result = await response.json();
+                addLog('分析完成', 'success');
+                displayResult(result);
+            } catch (error) {
+                addLog(`错误: ${error.message}`, 'error');
+            } finally {
+                loading.style.display = 'none';
+                sendBtn.disabled = false;
+                sendBtn.style.display = 'block';
+            }
+        }
+
+        function displayResult(result) {
+            resultSection.style.display = 'block';
+            let html = '';
+
+            if (result.fatigue) {
+                const fatigue = result.fatigue;
+                html += `
+                    <div class="result-card">
+                        <div class="result-title">😴 疲劳检测</div>
+                        <div class="result-value">${(fatigue.fatigue_level * 100).toFixed(0)}%</div>
+                        <div class="result-status ${fatigue.status === 'fatigued' ? 'critical' : 'high'}">
+                            ${fatigue.status === 'fatigued' ? '疲劳' : '正常'}
+                        </div>
+                    </div>
+                `;
+            }
+            if (result.gaze) {
+                const gaze = result.gaze;
+                html += `
+                    <div class="result-card">
+                        <div class="result-title">👀 视线估计</div>
+                        <div class="result-value">${(gaze.gaze_score * 100).toFixed(0)}%</div>
+                        <div class="result-status ${gaze.gaze_direction === 'center' ? 'high' : 'medium'}">
+                            方向: ${gaze.gaze_direction}
+                        </div>
+                    </div>
+                `;
+            }
+            if (result.posture) {
+                const posture = result.posture;
+                html += `
+                    <div class="result-card">
+                        <div class="result-title">🧍 坐姿检测</div>
+                        <div class="result-value">${posture.posture_score?.toFixed(0)}%</div>
+                        <div class="result-status ${posture.status === 'good' ? 'high' : posture.status === 'moderate' ? 'medium' : 'low'}">
+                            ${posture.status === 'good' ? '良好' : posture.status === 'moderate' ? '一般' : '不良'}
+                        </div>
+                    </div>
+                `;
+            }
+            if (result.attention) {
+                const attention = result.attention;
+                html += `
+                    <div class="result-card">
+                        <div class="result-title">🎯 综合注意力</div>
+                        <div class="result-value">${attention.attention_score?.toFixed(0)}%</div>
+                        <div class="result-status ${attention.status}">
+                            ${attention.status === 'high' ? '高' : attention.status === 'medium' ? '中' : attention.status === 'low' ? '低' : '危险'}
+                        </div>
+                    </div>
+                `;
+            }
+
+            resultContent.innerHTML = html;
+        }
+
+        document.getElementById('modeDriving').addEventListener('click', () => {
+            currentMode = 'driving';
+            document.getElementById('modeDriving').className = 'mode-btn active';
+            document.getElementById('modeLearning').className = 'mode-btn';
+        });
+
+        document.getElementById('modeLearning').addEventListener('click', () => {
+            currentMode = 'learning';
+            document.getElementById('modeLearning').className = 'mode-btn active';
+            document.getElementById('modeDriving').className = 'mode-btn';
+        });
+
+        document.getElementById('fileInput').addEventListener('change', handleFileSelect);
+        document.getElementById('cameraBtn').addEventListener('click', captureFromCamera);
+        document.getElementById('sendBtn').addEventListener('click', sendImage);
+        
+        addLog('页面已加载，准备就绪', 'info');
+    </script>
+</body>
+</html>

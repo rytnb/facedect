@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket 测试 - 智能监测系统</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .card-header {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+
+        .card-header h1 {
+            font-size: 24px;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .card-header p {
+            color: #888;
+            font-size: 14px;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 20px;
+            padding: 12px;
+            border-radius: 10px;
+            font-size: 14px;
+        }
+
+        .status-indicator.connected {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-indicator.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-indicator.connecting {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+
+        .status-indicator.connected .status-dot {
+            background: #28a745;
+        }
+
+        .status-indicator.disconnected .status-dot {
+            background: #dc3545;
+            animation: none;
+        }
+
+        .status-indicator.connecting .status-dot {
+            background: #ffc107;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .upload-section {
+            margin-bottom: 20px;
+        }
+
+        .upload-btn {
+            display: block;
+            width: 100%;
+            padding: 20px;
+            border: 2px dashed #ddd;
+            border-radius: 12px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #f8f9fa;
+        }
+
+        .upload-btn:hover {
+            border-color: #667eea;
+            background: #f0f0ff;
+        }
+
+        .upload-btn:active {
+            transform: scale(0.98);
+        }
+
+        .upload-btn i {
+            font-size: 48px;
+            margin-bottom: 12px;
+            display: block;
+        }
+
+        .upload-btn span {
+            display: block;
+            color: #666;
+            font-size: 16px;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .camera-btn {
+            display: block;
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 12px;
+        }
+
+        .camera-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        #video {
+            width: 100%;
+            height: auto;
+            border-radius: 12px;
+            display: none;
+        }
+
+        .preview-section {
+            margin-bottom: 20px;
+        }
+
+        .preview-section h3 {
+            font-size: 16px;
+            color: #333;
+            margin-bottom: 12px;
+        }
+
+        #previewImage {
+            width: 100%;
+            max-height: 300px;
+            object-fit: contain;
+            border-radius: 12px;
+            display: none;
+        }
+
+        .send-btn {
+            display: block;
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 12px;
+        }
+
+        .send-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(40, 167, 69, 0.4);
+        }
+
+        .send-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .mode-selector {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .mode-btn {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            background: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .mode-btn.active {
+            border-color: #667eea;
+            background: #f0f0ff;
+            color: #667eea;
+        }
+
+        .mode-btn:hover {
+            border-color: #667eea;
+        }
+
+        .result-section {
+            margin-top: 20px;
+        }
+
+        .result-section h3 {
+            font-size: 16px;
+            color: #333;
+            margin-bottom: 12px;
+        }
+
+        .result-card {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 16px;
+            margin-bottom: 12px;
+            border-left: 4px solid;
+        }
+
+        .result-card.fatigue {
+            border-left-color: #667eea;
+        }
+
+        .result-card.gaze {
+            border-left-color: #f093fb;
+        }
+
+        .result-card.posture {
+            border-left-color: #4facfe;
+        }
+
+        .result-card.attention {
+            border-left-color: #28a745;
+        }
+
+        .result-card.critical {
+            border-left-color: #dc3545;
+        }
+
+        .result-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .result-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #667eea;
+        }
+
+        .result-status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            margin-top: 8px;
+        }
+
+        .result-status.high {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .result-status.medium {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .result-status.low {
+            background: #ffeeba;
+            color: #856404;
+        }
+
+        .result-status.critical {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .result-details {
+            font-size: 12px;
+            color: #888;
+            margin-top: 8px;
+        }
+
+        .alert-section {
+            background: #fff3cd;
+            border-radius: 10px;
+            padding: 16px;
+            margin-top: 16px;
+            border-left: 4px solid #f39c12;
+            display: none;
+        }
+
+        .alert-section.show {
+            display: block;
+        }
+
+        .alert-title {
+            font-weight: 600;
+            color: #856404;
+            margin-bottom: 4px;
+        }
+
+        .alert-message {
+            font-size: 14px;
+            color: #856404;
+        }
+
+        .logs-section {
+            background: #1a1a2e;
+            border-radius: 10px;
+            padding: 16px;
+            margin-top: 20px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .logs-section h3 {
+            color: #fff;
+            font-size: 14px;
+            margin-bottom: 12px;
+        }
+
+        .log-item {
+            color: #aaa;
+            font-size: 12px;
+            margin-bottom: 4px;
+            font-family: monospace;
+        }
+
+        .log-item.info {
+            color: #66b3ff;
+        }
+
+        .log-item.success {
+            color: #66ff66;
+        }
+
+        .log-item.error {
+            color: #ff6666;
+        }
+
+        .log-item.warning {
+            color: #ffcc66;
+        }
+
+        .footer {
+            text-align: center;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 12px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="card-header">
+                <h1>📸 智能监测测试</h1>
+                <p>上传图片进行实时视觉分析</p>
+            </div>
+
+            <div class="status-indicator disconnected" id="statusIndicator">
+                <span class="status-dot"></span>
+                <span id="statusText">未连接</span>
+            </div>
+
+            <div class="mode-selector">
+                <button class="mode-btn active" id="modeDriving">🚗 驾驶模式</button>
+                <button class="mode-btn" id="modeLearning">📚 学习模式</button>
+            </div>
+
+            <div class="upload-section">
+                <label for="fileInput" class="upload-btn">
+                    <i>📁</i>
+                    <span>点击选择图片或拍照上传</span>
+                </label>
+                <input type="file" id="fileInput" accept="image/*">
+                
+                <button class="camera-btn" id="cameraBtn">📷 使用相机</button>
+            </div>
+
+            <video id="video" autoplay playsinline></video>
+
+            <div class="preview-section">
+                <h3>预览</h3>
+                <img id="previewImage" alt="预览图片">
+                <button class="send-btn" id="sendBtn" disabled>发送图片进行分析</button>
+            </div>
+
+            <div class="result-section" id="resultSection" style="display: none;">
+                <h3>分析结果</h3>
+                <div id="resultContent"></div>
+            </div>
+
+            <div class="alert-section" id="alertSection">
+                <div class="alert-title">⚠️ 告警</div>
+                <div class="alert-message" id="alertMessage"></div>
+            </div>
+
+            <div class="logs-section">
+                <h3>📜 日志</h3>
+                <div id="logs"></div>
+            </div>
+        </div>
+
+        <div class="footer">
+            © 2026 智能监测系统 | WebSocket测试
+        </div>
+    </div>
+
+    <script>
+        let socket;
+        let currentMode = 'driving';
+        let currentImage = null;
+        let stream = null;
+
+        const statusIndicator = document.getElementById('statusIndicator');
+        const statusText = document.getElementById('statusText');
+        const modeDriving = document.getElementById('modeDriving');
+        const modeLearning = document.getElementById('modeLearning');
+        const fileInput = document.getElementById('fileInput');
+        const cameraBtn = document.getElementById('cameraBtn');
+        const video = document.getElementById('video');
+        const previewImage = document.getElementById('previewImage');
+        const sendBtn = document.getElementById('sendBtn');
+        const resultSection = document.getElementById('resultSection');
+        const resultContent = document.getElementById('resultContent');
+        const alertSection = document.getElementById('alertSection');
+        const alertMessage = document.getElementById('alertMessage');
+        const logs = document.getElementById('logs');
+
+        function addLog(message, type = 'info') {
+            const logItem = document.createElement('div');
+            logItem.className = `log-item ${type}`;
+            const timestamp = new Date().toLocaleTimeString();
+            logItem.textContent = `[${timestamp}] ${message}`;
+            logs.appendChild(logItem);
+            logs.scrollTop = logs.scrollHeight;
+        }
+
+        function setStatus(status) {
+            statusIndicator.className = `status-indicator ${status}`;
+            switch(status) {
+                case 'connected':
+                    statusText.textContent = '已连接';
+                    break;
+                case 'disconnected':
+                    statusText.textContent = '未连接';
+                    break;
+                case 'connecting':
+                    statusText.textContent = '连接中...';
+                    break;
+            }
+        }
+
+        function connectWebSocket() {
+            setStatus('connecting');
+            addLog('正在连接WebSocket...', 'info');
+
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/socket.io/?EIO=4&transport=websocket`;
+            
+            socket = io({
+                transports: ['websocket'],
+                reconnection: true,
+                reconnectionDelay: 1000,
+                reconnectionDelayMax: 5000
+            });
+
+            socket.on('connect', () => {
+                setStatus('connected');
+                addLog('WebSocket连接成功', 'success');
+                socket.emit('join_test');
+            });
+
+            socket.on('connect_error', (error) => {
+                setStatus('disconnected');
+                addLog(`连接失败: ${error}`, 'error');
+            });
+
+            socket.on('disconnect', (reason) => {
+                setStatus('disconnected');
+                if (reason === 'io server disconnect') {
+                    addLog('服务器主动断开连接', 'error');
+                } else {
+                    addLog('连接断开，尝试重新连接...', 'warning');
+                }
+            });
+
+            socket.on('joined_test', (data) => {
+                addLog(`已加入测试房间: ${data.room}`, 'success');
+            });
+
+            socket.on('frame_received', (data) => {
+                addLog('图片已接收，正在分析...', 'info');
+                sendBtn.disabled = true;
+            });
+
+            socket.on('frame_result', (result) => {
+                addLog('收到分析结果', 'success');
+                displayResult(result);
+                sendBtn.disabled = false;
+            });
+
+            socket.on('alert', (alertData) => {
+                addLog(`收到告警: ${alertData.type} - ${alertData.message}`, 'warning');
+                showAlert(alertData);
+            });
+        }
+
+        function displayResult(result) {
+            resultSection.style.display = 'block';
+            
+            let html = '';
+
+            if (result.fatigue) {
+                const fatigue = result.fatigue;
+                const fatigueLevel = (fatigue.fatigue_level * 100).toFixed(0);
+                html += `
+                    <div class="result-card fatigue">
+                        <div class="result-title">😴 疲劳检测</div>
+                        <div class="result-value">${fatigueLevel}%</div>
+                        <div class="result-status ${fatigue.status === 'fatigued' ? 'critical' : 'high'}">
+                            ${fatigue.status === 'fatigued' ? '疲劳' : '正常'}
+                        </div>
+                        <div class="result-details">
+                            EAR: ${fatigue.EAR?.toFixed(3)} | PERCLOS: ${(fatigue.PERCLOS * 100).toFixed(1)}%
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (result.gaze) {
+                const gaze = result.gaze;
+                const gazeScore = (gaze.gaze_score * 100).toFixed(0);
+                html += `
+                    <div class="result-card gaze">
+                        <div class="result-title">👀 视线估计</div>
+                        <div class="result-value">${gazeScore}%</div>
+                        <div class="result-status ${gaze.gaze_direction === 'center' ? 'high' : 'medium'}">
+                            方向: ${gaze.gaze_direction}
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (result.posture) {
+                const posture = result.posture;
+                html += `
+                    <div class="result-card posture">
+                        <div class="result-title">🧍 坐姿检测</div>
+                        <div class="result-value">${posture.posture_score?.toFixed(0)}%</div>
+                        <div class="result-status ${posture.status === 'good' ? 'high' : posture.status === 'moderate' ? 'medium' : 'low'}">
+                            ${posture.status === 'good' ? '良好' : posture.status === 'moderate' ? '一般' : '不良'}
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (result.attention) {
+                const attention = result.attention;
+                html += `
+                    <div class="result-card attention ${attention.status === 'critical' ? 'critical' : ''}">
+                        <div class="result-title">🎯 综合注意力</div>
+                        <div class="result-value">${attention.attention_score?.toFixed(0)}%</div>
+                        <div class="result-status ${attention.status}">
+                            ${attention.status === 'high' ? '高' : attention.status === 'medium' ? '中' : attention.status === 'low' ? '低' : '危险'}
+                        </div>
+                        <div class="result-details">
+                            趋势: ${(attention.trend * 100).toFixed(0)}%
+                        </div>
+                    </div>
+                `;
+            }
+
+            resultContent.innerHTML = html;
+        }
+
+        function showAlert(alertData) {
+            alertSection.className = 'alert-section show';
+            alertMessage.textContent = alertData.message;
+            
+            setTimeout(() => {
+                alertSection.className = 'alert-section';
+            }, 5000);
+        }
+
+        function sendImage() {
+            if (!socket || !currentImage) return;
+
+            addLog('正在发送图片...', 'info');
+            
+            socket.emit('frame_test', {
+                frame: currentImage,
+                mode: currentMode
+            });
+        }
+
+        function imageToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target.result.split(',')[1]);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        async function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            currentImage = await imageToBase64(file);
+            
+            previewImage.src = `data:image/jpeg;base64,${currentImage}`;
+            previewImage.style.display = 'block';
+            video.style.display = 'none';
+            sendBtn.disabled = false;
+            
+            addLog(`图片已加载: ${file.name}`, 'info');
+        }
+
+        async function captureFromCamera() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+                video.srcObject = stream;
+                video.style.display = 'block';
+                previewImage.style.display = 'none';
+                
+                setTimeout(() => {
+                    captureFrame();
+                }, 1000);
+                
+            } catch (error) {
+                addLog(`相机访问失败: ${error}`, 'error');
+            }
+        }
+
+        function captureFrame() {
+            if (!stream) return;
+
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            
+            currentImage = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+            
+            video.style.display = 'none';
+            previewImage.src = canvas.toDataURL('image/jpeg');
+            previewImage.style.display = 'block';
+            sendBtn.disabled = false;
+            
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+            
+            addLog('已从相机捕获图片', 'success');
+        }
+
+        modeDriving.addEventListener('click', () => {
+            currentMode = 'driving';
+            modeDriving.className = 'mode-btn active';
+            modeLearning.className = 'mode-btn';
+            addLog('切换到驾驶模式', 'info');
+        });
+
+        modeLearning.addEventListener('click', () => {
+            currentMode = 'learning';
+            modeLearning.className = 'mode-btn active';
+            modeDriving.className = 'mode-btn';
+            addLog('切换到学习模式', 'info');
+        });
+
+        fileInput.addEventListener('change', handleFileSelect);
+        cameraBtn.addEventListener('click', captureFromCamera);
+        sendBtn.addEventListener('click', sendImage);
+
+        document.addEventListener('DOMContentLoaded', () => {
+            connectWebSocket();
+        });
+    </script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.1/socket.io.min.js"></script>
+</body>
+</html>
